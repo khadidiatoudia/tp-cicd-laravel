@@ -20,7 +20,6 @@ jobs:
           MYSQL_DATABASE: laravel_db_test
         ports:
           - 3306:3306
-        # Le healthcheck s'assure que GitHub Actions attend que MySQL soit prêt
         options: >-
           --health-cmd="mysqladmin ping"
           --health-interval=10s
@@ -31,12 +30,23 @@ jobs:
       - name: 1. Récupération du code source
         uses: actions/checkout@v4
 
-      - name: 2. Configuration de PHP
+      - name: 2. Configuration de PHP & Mise en cache
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
           extensions: mbstring, xml, ctype, iconv, pdo, pdo_mysql, bcmath, dom, filter, json, openssl
           coverage: xdebug
+          update: true
+          tools: composer:v2
+
+      # Étape de cache spécifique pour les dépendances téléchargées par Composer
+      - name: 2b. Gestion du cache des paquets Composer
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-
 
       - name: 3. Copie du fichier d'environnement de test
         run: cp .env.example .env
