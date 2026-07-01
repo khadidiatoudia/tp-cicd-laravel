@@ -20,7 +20,12 @@ jobs:
           MYSQL_DATABASE: laravel_db_test
         ports:
           - 3306:3306
-        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
+        # Le healthcheck s'assure que GitHub Actions attend que MySQL soit prêt
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
 
     steps:
       - name: 1. Récupération du code source
@@ -42,11 +47,7 @@ jobs:
       - name: 5. Génération de la clé d'application Laravel
         run: php artisan key:generate
 
-      # ÉTAPE AJOUTÉE : On force la création de la base de données si MySQL a du retard
-      - name: 5b. Création manuelle de la base de données si inexistante
-        run: mysql -h 127.0.0.1 -u root -e 'CREATE DATABASE IF NOT EXISTS laravel_db_test;'
-
-      - name: 6. Exécution des migrations et des tests avec couverture
+      - name: 6. Exécution des tests avec environnement MySQL explicite
         env:
           DB_CONNECTION: mysql
           DB_HOST: 127.0.0.1
@@ -54,7 +55,10 @@ jobs:
           DB_DATABASE: laravel_db_test
           DB_USERNAME: root
           DB_PASSWORD: ""
-        run: php artisan test --coverage-clover=coverage.xml
+        run: |
+          mysql -h 127.0.0.1 -u root -e "CREATE DATABASE IF NOT EXISTS laravel_db_test;"
+          php artisan migrate --force
+          php artisan test --coverage-clover=coverage.xml
 
       - name: 7. Téléchargement de l'artefact de couverture
         uses: actions/upload-artifact@v4
