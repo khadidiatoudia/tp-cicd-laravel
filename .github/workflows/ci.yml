@@ -1,0 +1,25 @@
+name: Premier Workflow
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  bonjour:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Récupération du code source
+        uses: actions/checkout@v4
+
+      - name: Configuration de l'environnement PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+
+      - name: Vérification de la version de PHP
+        run: php -v
+
+      - name: Message de bienvenue
+        run: echo "Bonjour GitHub Actions, le runner est opérationnel!"
