@@ -1,20 +1,27 @@
-name: Laravel CI
+name: Pipeline Laravel CI/CD Industriel
 
 on:
   push:
     branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   qualite-et-tests:
     runs-on: ubuntu-latest
 
+    env:
+      APP_ENV: testing
+      DB_CONNECTION: sqlite
+      DB_DATABASE: :memory:
+
     steps:
-      - name: Récupérer le code
+      - name: 1. Récupérer le code
         uses: actions/checkout@v4
 
-      - name: Initialiser PHP avec PCOV
+      - name: 2. Initialiser PHP avec PCOV
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
@@ -22,25 +29,71 @@ jobs:
           tools: composer
           coverage: pcov
 
-      - name: Installer les dépendances
+      - name: 3. Récupérer le chemin du cache Composer
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: 4. Mettre en cache les dépendances Composer
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-
+
+      - name: 5. Installer les dépendances
         run: composer install --prefer-dist --no-interaction
 
-      - name: Vérifier le respect du style de code (Linting)
+      - name: 6. Vérifier le style (Linting)
         run: ./vendor/bin/pint --test
 
-      - name: Préparer la configuration
+      - name: 7. Préparer l'environnement
         run: cp .env.example .env
 
-      - name: Générer la clé d'application
+      - name: 8. Générer la clé
         run: php artisan key:generate
 
-      - name: Exécuter les tests avec calcul de couverture
+      - name: 9. Exécuter les tests avec couverture
         run: ./vendor/bin/phpunit --coverage-html build/coverage-report
 
-      - name: Archiver le rapport de couverture en tant qu'Artefact
+      - name: 10. Sauvegarder le rapport de couverture
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: rapport-couverture-html
           path: build/coverage-report/
           retention-days: 7
+
+  build-et-distribution:
+    runs-on: ubuntu-latest
+    needs: qualite-et-tests
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Récupérer le code source
+        uses: actions/checkout@v4
+
+      - name: Se connecter au GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extraire les métadonnées Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
+            type=sha,format=short
+
+      - name: Construire et publier l'image Docker
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
